@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { BrowserRouter, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { z } from 'zod'
@@ -48,7 +49,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { formatGuarani } from '@black-cell/shared'
+import { formatGuarani, type ApiResponse, type Customer as CustomerDto, type CustomerInput } from '@black-cell/shared'
 import heroForDarkTheme from './assets/blackcell-dashboard-hero-on-dark.webp'
 import heroForLightTheme from './assets/blackcell-dashboard-hero-on-light.webp'
 import logoForDarkTheme from './assets/blackcell-logo-on-dark.svg'
@@ -61,6 +62,7 @@ import loginLogo from './assets/logo.svg'
 
 const iconStroke = 1.8
 type Theme = 'light' | 'dark'
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, 'Ingresa tu correo').email('Ingresa un correo válido'),
@@ -231,17 +233,10 @@ const customerFormSchema = z.object({
   notes: z.string().trim().max(240, 'Las notas no pueden superar 240 caracteres'),
 })
 
-const customerSchema = customerFormSchema.extend({
-  id: z.string(),
-  createdAt: z.string(),
-})
-
-const customersSchema = z.array(customerSchema)
 type CustomerFormValues = z.infer<typeof customerFormSchema>
-type Customer = z.infer<typeof customerSchema>
+type Customer = CustomerDto
 type CustomerFilter = Customer['status'] | 'all'
 
-const customersStorageKey = 'black-cell-customers'
 const customerTypeLabels: Record<Customer['customerType'], string> = {
   regular: 'Regular',
   frequent: 'Frecuente',
@@ -252,6 +247,43 @@ const customerStatusLabels: Record<Customer['status'], string> = {
   active: 'Activo',
   vip: 'VIP',
   inactive: 'Inactivo',
+}
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...init?.headers,
+    },
+  })
+
+  if (response.status === 204) {
+    return undefined as T
+  }
+
+  const payload = await response.json() as ApiResponse<T>
+
+  if (!payload.ok) {
+    throw new Error(payload.error.message)
+  }
+
+  return payload.data
+}
+
+function getCustomers() {
+  return apiRequest<Customer[]>('/clientes')
+}
+
+function createCustomer(customer: CustomerInput) {
+  return apiRequest<Customer>('/clientes', {
+    method: 'POST',
+    body: JSON.stringify(customer),
+  })
+}
+
+function deleteCustomer(id: string) {
+  return apiRequest<void>(`/clientes/${id}`, { method: 'DELETE' })
 }
 
 const moduleRecordSchema = z.object({
@@ -1878,23 +1910,29 @@ function SalesPage() {
   )
 }
 
-function readCustomers(): Customer[] {
-  const storedCustomers = window.localStorage.getItem(customersStorageKey)
-  if (!storedCustomers) return []
-
-  try {
-    const result = customersSchema.safeParse(JSON.parse(storedCustomers))
-    return result.success ? result.data : []
-  } catch {
-    return []
-  }
-}
-
 function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>(readCustomers)
   const [formOpen, setFormOpen] = useState(false)
   const [filter, setFilter] = useState<CustomerFilter>('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const queryClient = useQueryClient()
+  const customersQuery = useQuery({
+    queryKey: ['customers'],
+    queryFn: getCustomers,
+  })
+  const customers = customersQuery.data ?? []
+  const createCustomerMutation = useMutation({
+    mutationFn: createCustomer,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['customers'] })
+      closeForm()
+    },
+  })
+  const deleteCustomerMutation = useMutation({
+    mutationFn: deleteCustomer,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['customers'] })
+    },
+  })
   const {
     register,
     handleSubmit,
@@ -1914,10 +1952,6 @@ function CustomersPage() {
       notes: '',
     },
   })
-
-  useEffect(() => {
-    window.localStorage.setItem(customersStorageKey, JSON.stringify(customers))
-  }, [customers])
 
   const activeCustomers = customers.filter((customer) => customer.status !== 'inactive')
   const vipCustomers = customers.filter((customer) => customer.status === 'vip')
@@ -1956,16 +1990,11 @@ function CustomersPage() {
       return
     }
 
-    setCustomers((currentCustomers) => [{
-      ...result.data,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-    }, ...currentCustomers])
-    closeForm()
+    createCustomerMutation.mutate(result.data)
   }
 
   const removeCustomer = (id: string) => {
-    setCustomers((currentCustomers) => currentCustomers.filter((customer) => customer.id !== id))
+    deleteCustomerMutation.mutate(id)
   }
 
   return (
@@ -2031,7 +2060,23 @@ function CustomersPage() {
           </div>
         </div>
 
-        {visibleCustomers.length ? (
+        {customersQuery.isLoading ? (
+          <div className="shopping-empty">
+            <div className="placeholder-icon grid h-12 w-12 place-items-center rounded-lg">
+              <Users size={22} strokeWidth={iconStroke} />
+            </div>
+            <h3 className="text-primary mt-4 text-sm font-semibold">Cargando clientes</h3>
+            <p className="text-muted mt-1 text-xs">Consultando la base de datos de BlackCell.</p>
+          </div>
+        ) : customersQuery.isError ? (
+          <div className="shopping-empty">
+            <div className="placeholder-icon grid h-12 w-12 place-items-center rounded-lg">
+              <ShieldAlert size={22} strokeWidth={iconStroke} />
+            </div>
+            <h3 className="text-primary mt-4 text-sm font-semibold">No se pudieron cargar los clientes</h3>
+            <p className="text-muted mt-1 text-xs">{customersQuery.error.message}</p>
+          </div>
+        ) : visibleCustomers.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="table-head text-[11px] uppercase">
@@ -2093,6 +2138,7 @@ function CustomersPage() {
                         type="button"
                         aria-label={`Eliminar ${customer.name}`}
                         title="Eliminar"
+                        disabled={deleteCustomerMutation.isPending}
                         onClick={() => removeCustomer(customer.id)}
                       >
                         <Trash2 size={17} strokeWidth={iconStroke} />
@@ -2191,10 +2237,14 @@ function CustomersPage() {
               </div>
               <div className="flex justify-end gap-3 sm:col-span-2">
                 <button className="secondary-button inline-flex" type="button" onClick={closeForm}>Cancelar</button>
-                <button className="primary-button inline-flex gap-2" type="submit">
-                  <Check size={16} strokeWidth={iconStroke} /> Guardar cliente
+                <button className="primary-button inline-flex gap-2" type="submit" disabled={createCustomerMutation.isPending}>
+                  <Check size={16} strokeWidth={iconStroke} />
+                  {createCustomerMutation.isPending ? 'Guardando...' : 'Guardar cliente'}
                 </button>
               </div>
+              {createCustomerMutation.isError ? (
+                <p className="field-error sm:col-span-2">{createCustomerMutation.error.message}</p>
+              ) : null}
             </form>
           </section>
         </div>

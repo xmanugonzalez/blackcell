@@ -5,6 +5,7 @@ import morgan from 'morgan'
 import { APP_NAME, type HealthStatus } from '@black-cell/shared'
 import { env } from './config/env.js'
 import { failure, success } from './http/responses.js'
+import { customersRouter } from './modules/customers.js'
 
 export function createApp(): express.Express {
   const app = express()
@@ -23,6 +24,8 @@ export function createApp(): express.Express {
 
     response.json(success(status))
   })
+
+  app.use('/clientes', customersRouter)
 
   app.use((_request, response) => {
     response.status(404).json(failure('NOT_FOUND', 'Recurso no encontrado.'))

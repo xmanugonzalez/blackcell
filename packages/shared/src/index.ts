@@ -30,3 +30,25 @@ export type HealthStatus = {
   status: 'ok'
   timestamp: string
 }
+
+export const customerTypes = ['regular', 'frequent', 'business'] as const
+export const customerStatuses = ['active', 'vip', 'inactive'] as const
+
+export type CustomerType = typeof customerTypes[number]
+export type CustomerStatus = typeof customerStatuses[number]
+
+export type Customer = {
+  id: string
+  name: string
+  documentNumber: string
+  phone: string
+  email: string
+  city: string
+  customerType: CustomerType
+  status: CustomerStatus
+  lastDevice: string
+  notes: string
+  createdAt: string
+}
+
+export type CustomerInput = Omit<Customer, 'id' | 'createdAt'>
