@@ -1,0 +1,23 @@
+{
+  "name": "black-cell",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.24.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @black-cell/database prisma:generate",
+    "db:migrate": "pnpm --filter @black-cell/database prisma:migrate",
+    "db:studio": "pnpm --filter @black-cell/database prisma:studio"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.0",
+    "globals": "^17.11.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.67.0"
+  }
+}
