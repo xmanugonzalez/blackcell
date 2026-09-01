@@ -4,10 +4,7 @@ import { useForm, type SubmitHandler } from 'react-hook-form'
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { z } from 'zod'
 import {
-  ArrowDownRight,
-  ArrowUpRight,
   BarChart3,
-  Bell,
   Boxes,
   Check,
   CheckCircle2,
@@ -740,15 +737,11 @@ function CardHeader({ title, subtitle, action }: { title: string; subtitle?: str
 function MetricCard({
   title,
   value,
-  change,
   icon: Icon,
-  downward = false,
 }: {
   title: string
   value: string
-  change: string
   icon: LucideIcon
-  downward?: boolean
 }) {
   return (
     <Card className="p-5 sm:p-6">
@@ -758,10 +751,6 @@ function MetricCard({
       <p className="text-secondary text-sm">{title}</p>
       <div className="mt-1 flex flex-wrap items-end justify-between gap-2">
         <strong className="text-primary text-[22px] font-medium">{value}</strong>
-        <span className={`metric-trend flex items-center text-xs font-medium ${downward ? 'metric-trend--down' : ''}`}>
-          {downward ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />}
-          {change}
-        </span>
       </div>
     </Card>
   )
@@ -800,8 +789,8 @@ function DashboardPage({ theme }: { theme: Theme }) {
         </Card>
 
         <div className="grid grid-cols-2 gap-6 xl:col-span-4">
-          <MetricCard title="Clientes" value={summaryQuery.isLoading ? '...' : String(summary?.customers.total ?? 0)} change="Base de datos" icon={Users} />
-          <MetricCard title="Usuarios activos" value={summaryQuery.isLoading ? '...' : String(summary?.users.active ?? 0)} change="Accesos" icon={ShieldAlert} />
+          <MetricCard title="Clientes" value={summaryQuery.isLoading ? '...' : String(summary?.customers.total ?? 0)} icon={Users} />
+          <MetricCard title="Usuarios activos" value={summaryQuery.isLoading ? '...' : String(summary?.users.active ?? 0)} icon={ShieldAlert} />
         </div>
       </div>
 
@@ -3330,10 +3319,6 @@ function Topbar({
         onClick={onToggleTheme}
       >
         {theme === 'dark' ? <Sun size={20} strokeWidth={iconStroke} /> : <Moon size={20} strokeWidth={iconStroke} />}
-      </button>
-      <button className="icon-button relative" type="button" aria-label="Notificaciones">
-        <Bell size={20} strokeWidth={iconStroke} />
-        <span className="notification-dot absolute right-2 top-2 h-2 w-2 rounded-full border-2" />
       </button>
       <div className="relative">
         <button
