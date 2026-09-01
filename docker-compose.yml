@@ -28,8 +28,11 @@ services:
       API_PORT: 3000
       CORS_ORIGIN: http://localhost
       DATABASE_URL: postgresql://${POSTGRES_USER:-blackcell}:${POSTGRES_PASSWORD:-blackcell_dev_password}@postgres:5432/${POSTGRES_DB:-blackcell}?schema=public
+      UPLOADS_DIR: /app/uploads
     ports:
       - "3000:3000"
+    volumes:
+      - ./uploads:/app/uploads
 
   web:
     build:

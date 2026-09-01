@@ -64,3 +64,27 @@ model Cliente {
   @@index([telefono])
   @@map("clientes")
 }
+
+enum TipoEntidadImagen {
+  PRODUCTO   @map("producto")
+  REPARACION @map("reparacion")
+
+  @@map("tipo_entidad_imagen")
+}
+
+model Imagen {
+  id             String            @id @default(cuid())
+  entidadTipo    TipoEntidadImagen @map("entidad_tipo")
+  entidadId      String            @map("entidad_id")
+  nombreOriginal String            @map("nombre_original")
+  nombreArchivo  String            @unique @map("nombre_archivo")
+  mimeType       String            @map("mime_type")
+  tamanoBytes    Int               @map("tamano_bytes")
+  rutaArchivo    String            @map("ruta_archivo")
+  esPrincipal    Boolean           @default(false) @map("es_principal")
+  orden          Int               @default(0)
+  creadoEn       DateTime          @default(now()) @map("creado_en")
+
+  @@index([entidadTipo, entidadId])
+  @@map("imagenes")
+}

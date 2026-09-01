@@ -9,6 +9,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   JWT_SECRET: z.string().min(32).optional(),
+  UPLOADS_DIR: z.string().min(1).default('uploads'),
 })
 
 const parsedEnv = envSchema.parse(process.env)

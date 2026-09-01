@@ -83,3 +83,21 @@ export type Customer = {
 }
 
 export type CustomerInput = Omit<Customer, 'id' | 'createdAt'>
+
+export const imageEntityTypes = ['producto', 'reparacion'] as const
+
+export type ImageEntityType = typeof imageEntityTypes[number]
+
+export type EntityImage = {
+  id: string
+  entityType: ImageEntityType
+  entityId: string
+  originalName: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  url: string
+  isPrimary: boolean
+  order: number
+  createdAt: string
+}

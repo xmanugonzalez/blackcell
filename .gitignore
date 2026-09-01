@@ -12,6 +12,7 @@ lerna-debug.log*
 
 node_modules
 .pnpm-store
+uploads
 __pycache__
 *.pyc
 dist

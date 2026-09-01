@@ -23,6 +23,7 @@ import {
   ExternalLink,
   HeartHandshake,
   Home,
+  ImageIcon,
   Layers3,
   LockKeyhole,
   Mail,
@@ -42,6 +43,7 @@ import {
   Sun,
   Trash2,
   Truck,
+  UploadCloud,
   UserRound,
   Users,
   WalletCards,
@@ -57,6 +59,8 @@ import {
   type ChangePasswordInput,
   type Customer as CustomerDto,
   type CustomerInput,
+  type EntityImage,
+  type ImageEntityType,
   type LoginInput,
   type UpdateProfileInput,
 } from '@black-cell/shared'
@@ -277,13 +281,15 @@ const customerStatusLabels: Record<Customer['status'], string> = {
 }
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers)
+  if (!(init?.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
+    headers,
   })
 
   if (response.status === 204) {
@@ -343,6 +349,133 @@ function changePassword(input: ChangePasswordInput) {
   })
 }
 
+function getEntityImages(entityType: ImageEntityType, entityId: string) {
+  const params = new URLSearchParams({
+    entidad_tipo: entityType,
+    entidad_id: entityId,
+  })
+
+  return apiRequest<EntityImage[]>(`/imagenes?${params.toString()}`)
+}
+
+function uploadEntityImages(entityType: ImageEntityType, entityId: string, files: FileList) {
+  const formData = new FormData()
+  formData.set('entidad_tipo', entityType)
+  formData.set('entidad_id', entityId)
+
+  Array.from(files).forEach((file) => {
+    formData.append('imagenes', file)
+  })
+
+  return apiRequest<EntityImage[]>('/imagenes', {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+function setPrimaryImage(id: string) {
+  return apiRequest<EntityImage>(`/imagenes/${id}/principal`, { method: 'PATCH' })
+}
+
+function deleteEntityImage(id: string) {
+  return apiRequest<void>(`/imagenes/${id}`, { method: 'DELETE' })
+}
+
+function ImageUploader({ entityId, entityType }: { entityId: string, entityType: ImageEntityType }) {
+  const queryClient = useQueryClient()
+  const queryKey = ['imagenes', entityType, entityId] as const
+  const imagesQuery = useQuery({
+    queryKey,
+    queryFn: () => getEntityImages(entityType, entityId),
+    enabled: Boolean(entityId),
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: (files: FileList) => uploadEntityImages(entityType, entityId, files),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey })
+    },
+  })
+
+  const primaryMutation = useMutation({
+    mutationFn: setPrimaryImage,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteEntityImage,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey })
+    },
+  })
+
+  const images = imagesQuery.data ?? []
+  const inputId = `images-${entityType}-${entityId}`
+  const isUploading = uploadMutation.isPending
+  const errorMessage = uploadMutation.error?.message
+    ?? primaryMutation.error?.message
+    ?? deleteMutation.error?.message
+    ?? (imagesQuery.isError ? imagesQuery.error.message : null)
+
+  return (
+    <div className="image-uploader">
+      <div className="image-uploader__rail">
+        {images.length ? images.map((image) => (
+          <div className={image.isPrimary ? 'image-uploader__thumb image-uploader__thumb--primary' : 'image-uploader__thumb'} key={image.id}>
+            <img src={`${apiBaseUrl}${image.url}`} alt={image.originalName} loading="lazy" />
+            <div className="image-uploader__actions">
+              <button
+                className="image-uploader__action"
+                type="button"
+                title="Marcar como principal"
+                aria-label="Marcar como principal"
+                disabled={image.isPrimary || primaryMutation.isPending}
+                onClick={() => primaryMutation.mutate(image.id)}
+              >
+                <Star size={13} strokeWidth={iconStroke} fill={image.isPrimary ? 'currentColor' : 'none'} />
+              </button>
+              <button
+                className="image-uploader__action image-uploader__action--danger"
+                type="button"
+                title="Eliminar imagen"
+                aria-label="Eliminar imagen"
+                disabled={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(image.id)}
+              >
+                <Trash2 size={13} strokeWidth={iconStroke} />
+              </button>
+            </div>
+          </div>
+        )) : (
+          <div className="image-uploader__empty">
+            <ImageIcon size={16} strokeWidth={iconStroke} />
+          </div>
+        )}
+        <label className="image-uploader__add" htmlFor={inputId} title="Subir imágenes">
+          <UploadCloud size={16} strokeWidth={iconStroke} />
+          <input
+            id={inputId}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            disabled={isUploading}
+            onChange={(event) => {
+              if (event.target.files?.length) {
+                uploadMutation.mutate(event.target.files)
+              }
+              event.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+      {isUploading ? <p className="image-uploader__status">Subiendo imágenes...</p> : null}
+      {errorMessage ? <p className="field-error">{errorMessage}</p> : null}
+    </div>
+  )
+}
+
 const moduleRecordSchema = z.object({
   id: z.string(),
   createdAt: z.string(),
@@ -385,6 +518,7 @@ type SimpleModuleConfig = {
   statusField?: string
   statusLabels?: Record<string, string>
   statusClassPrefix?: string
+  imageEntityType?: ImageEntityType
   filters?: readonly { value: string; label: string }[]
   metrics: readonly {
     label: string
@@ -1505,6 +1639,7 @@ function InventoryPage() {
                             <p className="text-primary truncate font-medium">{item.name}</p>
                             <p className="text-muted mt-1 text-[11px]">SKU {item.sku}</p>
                             {item.notes ? <p className="text-muted mt-1 max-w-xs truncate text-[11px]">{item.notes}</p> : null}
+                            <ImageUploader entityType="producto" entityId={item.id} />
                           </div>
                         </div>
                       </td>
@@ -2482,6 +2617,9 @@ function SimpleOperationsPage({ config }: { config: SimpleModuleConfig }) {
                           <div className="min-w-0">
                             <p className="text-primary truncate font-medium">{primaryValue}</p>
                             {secondaryValue ? <p className="text-muted mt-1 text-[11px]">{secondaryValue}</p> : null}
+                            {config.imageEntityType ? (
+                              <ImageUploader entityType={config.imageEntityType} entityId={record.id} />
+                            ) : null}
                           </div>
                         </div>
                       </td>
@@ -2598,6 +2736,7 @@ const repairsModuleConfig: SimpleModuleConfig = {
   statusField: 'status',
   statusLabels: repairStatusLabels,
   statusClassPrefix: 'repair-status',
+  imageEntityType: 'reparacion',
   filters: [
     { value: 'all', label: 'Todas' },
     { value: 'diagnosis', label: 'Diagnóstico' },

@@ -8,12 +8,17 @@ import { env } from './config/env.js'
 import { failure, success } from './http/responses.js'
 import { authRouter } from './modules/auth.js'
 import { customersRouter } from './modules/customers.js'
+import { imagesRouter } from './modules/images.js'
 
 export function createApp(): express.Express {
   const app = express()
 
-  app.use(helmet())
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
   app.use(cors({ credentials: true, origin: env.CORS_ORIGINS }))
+  app.use('/uploads', express.static(env.UPLOADS_DIR, {
+    immutable: true,
+    maxAge: '30d',
+  }))
   app.use(express.json())
   app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 
@@ -29,6 +34,7 @@ export function createApp(): express.Express {
 
   app.use('/auth', authRouter)
   app.use('/clientes', requireAuth, customersRouter)
+  app.use('/imagenes', requireAuth, imagesRouter)
 
   app.use((_request, response) => {
     response.status(404).json(failure('NOT_FOUND', 'Recurso no encontrado.'))

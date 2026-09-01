@@ -836,6 +836,110 @@ input:focus-visible {
   box-shadow: 0 0 0 3px var(--focus);
 }
 
+.image-uploader {
+  margin-top: 10px;
+  max-width: 360px;
+}
+
+.image-uploader__rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image-uploader__thumb,
+.image-uploader__empty,
+.image-uploader__add {
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.image-uploader__thumb {
+  position: relative;
+  overflow: hidden;
+}
+
+.image-uploader__thumb--primary {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+.image-uploader__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-uploader__actions {
+  position: absolute;
+  inset: auto 3px 3px 3px;
+  display: flex;
+  justify-content: space-between;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.image-uploader__thumb:hover .image-uploader__actions,
+.image-uploader__thumb:focus-within .image-uploader__actions {
+  opacity: 1;
+}
+
+.image-uploader__action,
+.image-uploader__add,
+.image-uploader__empty {
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+
+.image-uploader__action {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgb(255 255 255 / 34%);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 72%);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.image-uploader__action:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.image-uploader__action--danger {
+  color: #fecaca;
+}
+
+.image-uploader__add {
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.image-uploader__add:hover {
+  border-color: var(--text-primary);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.image-uploader__add input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.image-uploader__status {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 @media (min-width: 640px) {
   .shopping-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
