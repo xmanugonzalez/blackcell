@@ -7,6 +7,7 @@ import { prisma, TipoEntidadImagen, type Imagen } from '@black-cell/database'
 import { imageEntityTypes, type EntityImage, type ImageEntityType } from '@black-cell/shared'
 import { z } from 'zod'
 import { env } from '../config/env.js'
+import { getSessionUserId } from '../auth/session.js'
 import { failure, success } from '../http/responses.js'
 
 const maxImageSizeBytes = 5 * 1024 * 1024
@@ -33,11 +34,13 @@ const imageIdSchema = z.object({
 const entityTypeToDb: Record<ImageEntityType, TipoEntidadImagen> = {
   producto: TipoEntidadImagen.PRODUCTO,
   reparacion: TipoEntidadImagen.REPARACION,
+  usuario: TipoEntidadImagen.USUARIO,
 }
 
 const entityTypeFromDb: Record<TipoEntidadImagen, ImageEntityType> = {
   [TipoEntidadImagen.PRODUCTO]: 'producto',
   [TipoEntidadImagen.REPARACION]: 'reparacion',
+  [TipoEntidadImagen.USUARIO]: 'usuario',
 }
 
 function getPublicImageUrl(rutaArchivo: string) {
@@ -96,6 +99,18 @@ function getMulterErrorMessage(error: unknown) {
   return 'No se pudieron procesar las imágenes.'
 }
 
+function canManageImageEntity(request: Request, entityType: ImageEntityType, entityId: string) {
+  return entityType !== 'usuario' || getSessionUserId(request) === entityId
+}
+
+async function removeStoredImages(images: Imagen[]) {
+  await Promise.all(images.map((image) => (
+    unlink(path.join(env.UPLOADS_DIR, image.rutaArchivo)).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    })
+  )))
+}
+
 export const imagesRouter: ExpressRouter = Router()
 
 imagesRouter.get('/', async (request, response, next) => {
@@ -104,6 +119,11 @@ imagesRouter.get('/', async (request, response, next) => {
 
     if (!result.success) {
       response.status(400).json(failure('VALIDATION_ERROR', 'Indica el tipo y el registro de las imágenes.'))
+      return
+    }
+
+    if (!canManageImageEntity(request, result.data.entidad_tipo, result.data.entidad_id)) {
+      response.status(403).json(failure('FORBIDDEN', 'No puedes acceder a estas imagenes.'))
       return
     }
 
@@ -149,6 +169,16 @@ imagesRouter.post('/', async (request, response, next) => {
       return
     }
 
+    if (result.data.entidad_tipo === 'usuario' && files.length > 1) {
+      response.status(400).json(failure('VALIDATION_ERROR', 'El perfil solo puede tener una foto.'))
+      return
+    }
+
+    if (!canManageImageEntity(request, result.data.entidad_tipo, result.data.entidad_id)) {
+      response.status(403).json(failure('FORBIDDEN', 'No puedes modificar estas imagenes.'))
+      return
+    }
+
     const invalidFileMessage = files.map(validateImage).find(Boolean)
     if (invalidFileMessage) {
       response.status(400).json(failure('VALIDATION_ERROR', invalidFileMessage))
@@ -164,6 +194,9 @@ imagesRouter.post('/', async (request, response, next) => {
     const existingCount = await prisma.imagen.count({
       where: { entidadTipo: dbEntityType, entidadId: entityId },
     })
+    const previousProfileImages = entityType === 'usuario'
+      ? await prisma.imagen.findMany({ where: { entidadTipo: dbEntityType, entidadId: entityId } })
+      : []
 
     const createdImages: Imagen[] = []
 
@@ -183,12 +216,19 @@ imagesRouter.post('/', async (request, response, next) => {
           mimeType: file.mimetype,
           tamanoBytes: file.size,
           rutaArchivo: relativePath,
-          esPrincipal: existingCount === 0 && index === 0,
+          esPrincipal: entityType === 'usuario' || (existingCount === 0 && index === 0),
           orden: existingCount + index,
         },
       })
 
       createdImages.push(image)
+    }
+
+    if (previousProfileImages.length) {
+      await prisma.imagen.deleteMany({
+        where: { id: { in: previousProfileImages.map((image) => image.id) } },
+      })
+      await removeStoredImages(previousProfileImages)
     }
 
     response.status(201).json(success(createdImages.map(toEntityImage)))
@@ -204,6 +244,11 @@ imagesRouter.patch('/:id/principal', async (request, response, next) => {
 
     if (!image) {
       response.status(404).json(failure('NOT_FOUND', 'Imagen no encontrada.'))
+      return
+    }
+
+    if (!canManageImageEntity(request, entityTypeFromDb[image.entidadTipo as TipoEntidadImagen], image.entidadId)) {
+      response.status(403).json(failure('FORBIDDEN', 'No puedes modificar esta imagen.'))
       return
     }
 
@@ -238,11 +283,14 @@ imagesRouter.delete('/:id', async (request, response, next) => {
       return
     }
 
+    if (!canManageImageEntity(request, entityTypeFromDb[image.entidadTipo as TipoEntidadImagen], image.entidadId)) {
+      response.status(403).json(failure('FORBIDDEN', 'No puedes eliminar esta imagen.'))
+      return
+    }
+
     await prisma.imagen.delete({ where: { id } })
 
-    await unlink(path.join(env.UPLOADS_DIR, image.rutaArchivo)).catch((error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    })
+    await removeStoredImages([image])
 
     if (image.esPrincipal) {
       const nextPrimaryImage = await prisma.imagen.findFirst({

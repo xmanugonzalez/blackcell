@@ -358,7 +358,7 @@ function getEntityImages(entityType: ImageEntityType, entityId: string) {
   return apiRequest<EntityImage[]>(`/imagenes?${params.toString()}`)
 }
 
-function uploadEntityImages(entityType: ImageEntityType, entityId: string, files: FileList) {
+function uploadEntityImages(entityType: ImageEntityType, entityId: string, files: FileList | File[]) {
   const formData = new FormData()
   formData.set('entidad_tipo', entityType)
   formData.set('entidad_id', entityId)
@@ -379,6 +379,29 @@ function setPrimaryImage(id: string) {
 
 function deleteEntityImage(id: string) {
   return apiRequest<void>(`/imagenes/${id}`, { method: 'DELETE' })
+}
+
+function getUserInitials(name: string) {
+  return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toLocaleUpperCase('es')
+}
+
+function UserAvatar({ size = 'sm', user }: { size?: 'sm' | 'lg', user: AuthUser }) {
+  const imagesQuery = useQuery({
+    queryKey: ['imagenes', 'usuario', user.id],
+    queryFn: () => getEntityImages('usuario', user.id),
+    retry: false,
+  })
+  const profileImage = imagesQuery.data?.[0]
+
+  return (
+    <span className={`avatar profile-photo profile-photo--${size}`}>
+      {profileImage ? (
+        <img src={`${apiBaseUrl}${profileImage.url}`} alt={user.name} />
+      ) : (
+        getUserInitials(user.name)
+      )}
+    </span>
+  )
 }
 
 function ImageUploader({ entityId, entityType }: { entityId: string, entityType: ImageEntityType }) {
@@ -472,6 +495,77 @@ function ImageUploader({ entityId, entityType }: { entityId: string, entityType:
       </div>
       {isUploading ? <p className="image-uploader__status">Subiendo imágenes...</p> : null}
       {errorMessage ? <p className="field-error">{errorMessage}</p> : null}
+    </div>
+  )
+}
+
+function ProfilePhotoUploader({ user }: { user: AuthUser }) {
+  const queryClient = useQueryClient()
+  const queryKey = ['imagenes', 'usuario', user.id] as const
+  const imagesQuery = useQuery({
+    queryKey,
+    queryFn: () => getEntityImages('usuario', user.id),
+    retry: false,
+  })
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      return uploadEntityImages('usuario', user.id, [file])
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey })
+    },
+  })
+  const deleteMutation = useMutation({
+    mutationFn: deleteEntityImage,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey })
+    },
+  })
+  const profileImage = imagesQuery.data?.[0]
+  const inputId = `profile-photo-${user.id}`
+  const errorMessage = uploadMutation.error?.message
+    ?? deleteMutation.error?.message
+    ?? (imagesQuery.isError ? imagesQuery.error.message : null)
+
+  return (
+    <div className="profile-photo-uploader">
+      <UserAvatar size="lg" user={user} />
+      <div className="min-w-0">
+        <p className="text-primary text-sm font-semibold">Foto de perfil</p>
+        <p className="text-muted mt-1 text-xs">Usa una imagen JPG, PNG o WebP de hasta 5 MB.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <label className="secondary-button inline-flex gap-2" htmlFor={inputId}>
+            <UploadCloud size={15} strokeWidth={iconStroke} />
+            {profileImage ? 'Cambiar foto' : 'Subir foto'}
+            <input
+              id={inputId}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={uploadMutation.isPending}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) {
+                  uploadMutation.mutate(file)
+                }
+                event.target.value = ''
+              }}
+            />
+          </label>
+          {profileImage ? (
+            <button
+              className="secondary-button inline-flex gap-2"
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate(profileImage.id)}
+            >
+              <Trash2 size={15} strokeWidth={iconStroke} />
+              Quitar foto
+            </button>
+          ) : null}
+        </div>
+        {uploadMutation.isPending ? <p className="image-uploader__status">Subiendo foto...</p> : null}
+        {errorMessage ? <p className="field-error">{errorMessage}</p> : null}
+      </div>
     </div>
   )
 }
@@ -3176,7 +3270,7 @@ function Topbar({
           aria-expanded={profileOpen}
           onClick={() => setProfileOpen((value) => !value)}
         >
-          <span className="avatar grid h-9 w-9 place-items-center rounded-lg text-xs font-semibold">PA</span>
+          <UserAvatar user={user} />
           <span className="hidden xl:block">
             <strong className="text-primary block text-xs font-medium">{user.name}</strong>
             <span className="text-muted block text-[10px]">{roleLabel}</span>
@@ -3464,9 +3558,7 @@ function ProfilePage() {
       <Card className="overflow-hidden">
         <div className="grid gap-6 p-6 lg:grid-cols-[280px_1fr]">
           <div className="profile-summary rounded-lg p-5">
-            <div className="avatar grid h-16 w-16 place-items-center rounded-xl text-lg font-semibold">
-              {user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toLocaleUpperCase('es')}
-            </div>
+            <ProfilePhotoUploader user={user} />
             <h2 className="text-primary mt-5 text-xl font-semibold">{user.name}</h2>
             <p className="text-muted mt-1 text-sm">{user.email}</p>
             <span className="status-badge status-badge--success mt-5 inline-flex">
