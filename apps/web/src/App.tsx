@@ -3205,7 +3205,7 @@ function LoginPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
             </label>
 
             <button className="login-submit" type="submit" disabled={loginMutation.isPending}>
-              <span>{loginMutation.isPending ? 'Verificando acceso...' : 'Ingresar al sistema'}</span>
+              <span>{loginMutation.isPending ? 'Ingresando...' : 'Ingresar al sistema'}</span>
               <ChevronRight size={18} strokeWidth={2} aria-hidden="true" />
             </button>
           </form>
@@ -3421,14 +3421,7 @@ function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
   })
 
   if (sessionQuery.isLoading) {
-    return (
-      <div className="app-shell grid min-h-[100dvh] place-items-center">
-        <Card className="w-full max-w-sm p-6 text-center">
-          <h1 className="text-primary text-lg font-semibold">Verificando sesión</h1>
-          <p className="text-muted mt-2 text-sm">Conectando con BlackCell Manager.</p>
-        </Card>
-      </div>
-    )
+    return <div className="app-shell min-h-[100dvh]" aria-hidden="true" />
   }
 
   if (!sessionQuery.data) {
