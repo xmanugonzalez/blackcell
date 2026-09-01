@@ -88,7 +88,7 @@ POSTGRES_DB=blackcell
 
 NODE_ENV=production
 API_PORT=3000
-CORS_ORIGIN=https://blackcell.lat
+CORS_ORIGIN=https://blackcell.lat,https://www.blackcell.lat
 DATABASE_URL=postgresql://blackcell:password_seguro@postgres:5432/blackcell?schema=public
 JWT_SECRET=jwt_secret_seguro_de_32_caracteres_o_mas
 ```

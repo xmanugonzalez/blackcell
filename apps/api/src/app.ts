@@ -13,7 +13,7 @@ export function createApp(): express.Express {
   const app = express()
 
   app.use(helmet())
-  app.use(cors({ credentials: true, origin: env.CORS_ORIGIN }))
+  app.use(cors({ credentials: true, origin: env.CORS_ORIGINS }))
   app.use(express.json())
   app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 

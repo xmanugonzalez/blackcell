@@ -20,4 +20,5 @@ if (parsedEnv.NODE_ENV === 'production' && !parsedEnv.JWT_SECRET) {
 export const env = {
   ...parsedEnv,
   JWT_SECRET: parsedEnv.JWT_SECRET ?? 'blackcell-development-jwt-secret-change-before-production',
+  CORS_ORIGINS: parsedEnv.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean),
 }
