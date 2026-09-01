@@ -84,6 +84,23 @@ export type Customer = {
 
 export type CustomerInput = Omit<Customer, 'id' | 'createdAt'>
 
+export type DashboardSummary = {
+  customers: {
+    total: number
+    active: number
+    vip: number
+    business: number
+  }
+  users: {
+    total: number
+    active: number
+  }
+  images: {
+    total: number
+  }
+  recentCustomers: Customer[]
+}
+
 export const imageEntityTypes = ['producto', 'reparacion', 'usuario'] as const
 
 export type ImageEntityType = typeof imageEntityTypes[number]

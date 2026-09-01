@@ -8,6 +8,7 @@ import { env } from './config/env.js'
 import { failure, success } from './http/responses.js'
 import { authRouter } from './modules/auth.js'
 import { customersRouter } from './modules/customers.js'
+import { dashboardRouter } from './modules/dashboard.js'
 import { imagesRouter } from './modules/images.js'
 
 function isJsonParseError(error: unknown): error is SyntaxError & { status: number; type: string } {
@@ -41,6 +42,7 @@ export function createApp(): express.Express {
   })
 
   app.use('/auth', authRouter)
+  app.use('/dashboard', requireAuth, dashboardRouter)
   app.use('/clientes', requireAuth, customersRouter)
   app.use('/imagenes', requireAuth, imagesRouter)
 

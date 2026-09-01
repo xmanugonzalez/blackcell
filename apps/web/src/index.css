@@ -404,6 +404,29 @@ input:focus-visible {
   color: var(--text-primary);
 }
 
+.dashboard-stat {
+  min-height: 92px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 16px;
+}
+
+.dashboard-stat span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dashboard-stat strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1;
+}
+
 .chart-bar {
   background: var(--surface-strong);
 }

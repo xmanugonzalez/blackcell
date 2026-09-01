@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
@@ -59,6 +59,7 @@ import {
   type ChangePasswordInput,
   type Customer as CustomerDto,
   type CustomerInput,
+  type DashboardSummary,
   type EntityImage,
   type ImageEntityType,
   type LoginInput,
@@ -76,7 +77,7 @@ import loginLogo from './assets/logo.svg'
 
 const iconStroke = 1.8
 type Theme = 'light' | 'dark'
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? `http://${window.location.hostname}:3000`
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, 'Ingresa tu correo').email('Ingresa un correo válido'),
@@ -296,7 +297,15 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     return undefined as T
   }
 
-  const payload = await response.json() as ApiResponse<T>
+  let payload: ApiResponse<T>
+
+  try {
+    payload = await response.json() as ApiResponse<T>
+  } catch {
+    throw new Error(response.ok
+      ? 'El servidor devolvió una respuesta inválida.'
+      : 'No se pudo completar la solicitud. Intenta nuevamente.')
+  }
 
   if (!payload.ok) {
     throw new Error(payload.error.message)
@@ -307,6 +316,10 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 function getCustomers() {
   return apiRequest<Customer[]>('/clientes')
+}
+
+function getDashboardSummary() {
+  return apiRequest<DashboardSummary>('/dashboard/resumen')
 }
 
 function createCustomer(customer: CustomerInput) {
@@ -383,6 +396,29 @@ function deleteEntityImage(id: string) {
 
 function getUserInitials(name: string) {
   return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toLocaleUpperCase('es')
+}
+
+function formatCurrentDate() {
+  return new Intl.DateTimeFormat('es-PY', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date())
+}
+
+function getRouteForSearch(searchTerm: string) {
+  const normalizedSearch = searchTerm.trim().toLocaleLowerCase('es')
+
+  if (!normalizedSearch) return null
+  if (['rep', 'reparacion', 'reparación', 'equipo', 'tecnico', 'técnico'].some((term) => normalizedSearch.includes(term))) return '/reparaciones'
+  if (['cliente', 'documento', 'ruc', 'telefono', 'teléfono'].some((term) => normalizedSearch.includes(term))) return '/clientes'
+  if (['venta', 'cobro', 'pago'].some((term) => normalizedSearch.includes(term))) return '/ventas'
+  if (['producto', 'stock', 'sku', 'inventario'].some((term) => normalizedSearch.includes(term))) return '/inventario'
+  if (['proveedor'].some((term) => normalizedSearch.includes(term))) return '/proveedores'
+  if (['compra', 'pedido'].some((term) => normalizedSearch.includes(term))) return '/compras'
+
+  return '/clientes'
 }
 
 function UserAvatar({ size = 'sm', user }: { size?: 'sm' | 'lg', user: AuthUser }) {
@@ -655,10 +691,10 @@ const navigation = [
   {
     label: 'Operaciones',
     items: [
-      { label: 'Reparaciones', icon: Wrench, path: '/reparaciones', badge: '18' },
+      { label: 'Reparaciones', icon: Wrench, path: '/reparaciones' },
       { label: 'Clientes', icon: Users, path: '/clientes' },
       { label: 'Ventas', icon: ShoppingCart, path: '/ventas' },
-      { label: 'Inventario', icon: Boxes, path: '/inventario', badge: '9' },
+      { label: 'Inventario', icon: Boxes, path: '/inventario' },
       { label: 'Proveedores', icon: Truck, path: '/proveedores' },
       { label: 'Compras', icon: PackagePlus, path: '/compras' },
     ],
@@ -674,21 +710,6 @@ const navigation = [
     ],
   },
 ]
-
-const repairActivity = [
-  { number: 'REP-000184', customer: 'Diego Benítez', device: 'iPhone 13 Pro', status: 'En diagnóstico', tone: 'warning' },
-  { number: 'REP-000183', customer: 'Laura Giménez', device: 'Samsung S23', status: 'Listo', tone: 'success' },
-  { number: 'REP-000182', customer: 'Marcos Ferreira', device: 'Xiaomi Note 12', status: 'En reparación', tone: 'primary' },
-  { number: 'REP-000181', customer: 'Ana Cabrera', device: 'iPhone 11', status: 'Esperando repuesto', tone: 'neutral' },
-]
-
-const inventoryAlerts = [
-  { name: 'Display iPhone 11', sku: 'DIS-IP11-INC', stock: 2, minimum: 5 },
-  { name: 'Batería Samsung A52', sku: 'BAT-SA52', stock: 1, minimum: 4 },
-  { name: 'Cable USB-C 1 m', sku: 'CAB-USBC-1M', stock: 3, minimum: 10 },
-]
-
-const monthSales = [52, 70, 43, 78, 61, 89, 68, 94, 76, 100, 83, 91]
 
 const routeTitles: Record<string, string> = Object.fromEntries(
   navigation.flatMap((section) => section.items.map((item) => [item.path, item.label])),
@@ -726,7 +747,7 @@ function MetricCard({
   title: string
   value: string
   change: string
-  icon: typeof ShoppingBag
+  icon: LucideIcon
   downward?: boolean
 }) {
   return (
@@ -747,17 +768,26 @@ function MetricCard({
 }
 
 function DashboardPage({ theme }: { theme: Theme }) {
+  const summaryQuery = useQuery({
+    queryKey: ['dashboard', 'summary'],
+    queryFn: getDashboardSummary,
+  })
+  const summary = summaryQuery.data
+  const activeRatio = summary?.customers.total
+    ? Math.round((summary.customers.active / summary.customers.total) * 100)
+    : 0
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-12">
         <Card className="relative min-h-52 overflow-hidden xl:col-span-8">
           <div className="relative z-[1] max-w-[62%] p-6 sm:p-7">
-            <h2 className="text-primary text-xl font-semibold">¡Buen trabajo, equipo BlackCell!</h2>
+            <h2 className="text-primary text-xl font-semibold">Resumen del día</h2>
             <p className="text-secondary mt-3 max-w-md text-sm leading-6">
-              Hoy ingresaron 7 reparaciones y ya completaron 12 ventas. Hay 4 equipos listos para entregar.
+              Revisa rápidamente el estado de clientes, accesos y actividad reciente para mantener la operación al día.
             </p>
-            <NavLink className="primary-button mt-5 inline-flex" to="/reparaciones">
-              Ver reparaciones
+            <NavLink className="primary-button mt-5 inline-flex" to="/clientes">
+              Ver clientes
             </NavLink>
           </div>
           <div className="hero-visual absolute inset-y-0 right-0 w-[42%] overflow-hidden">
@@ -770,56 +800,67 @@ function DashboardPage({ theme }: { theme: Theme }) {
         </Card>
 
         <div className="grid grid-cols-2 gap-6 xl:col-span-4">
-          <MetricCard title="Ventas de hoy" value={formatGuarani(2450000)} change="18,2%" icon={ShoppingBag} />
-          <MetricCard title="Gastos" value={formatGuarani(380000)} change="6,4%" icon={WalletCards} downward />
+          <MetricCard title="Clientes" value={summaryQuery.isLoading ? '...' : String(summary?.customers.total ?? 0)} change="Base de datos" icon={Users} />
+          <MetricCard title="Usuarios activos" value={summaryQuery.isLoading ? '...' : String(summary?.users.active ?? 0)} change="Accesos" icon={ShieldAlert} />
         </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-12">
         <Card className="xl:col-span-8">
-          <CardHeader title="Rendimiento mensual" subtitle="Ventas registradas en los últimos 12 meses" />
+          <CardHeader title="Resumen general" subtitle="Indicadores principales del sistema" action={null} />
           <div className="px-5 pb-6 pt-5 sm:px-6">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-muted text-xs">Total acumulado</p>
-                <p className="text-primary mt-1 text-2xl font-medium">{formatGuarani(28640000)}</p>
-              </div>
-              <span className="metric-change flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium">
-                <ArrowUpRight size={14} /> 14,8%
-              </span>
-            </div>
-            <div className="mt-8 flex h-44 items-end gap-2 sm:gap-3" aria-label="Gráfico de ventas mensuales">
-              {monthSales.map((height, index) => (
-                <div className="group flex h-full flex-1 items-end" key={`${height}-${index}`}>
-                  <div
-                    className="chart-bar w-full rounded-t-md transition-colors"
-                    style={{ height: `${height}%` }}
-                    title={`${height}% del máximo mensual`}
-                  />
+            {summaryQuery.isError ? (
+              <div className="shopping-empty min-h-52 border-0">
+                <div className="placeholder-icon grid h-12 w-12 place-items-center rounded-lg">
+                  <ShieldAlert size={22} strokeWidth={iconStroke} />
                 </div>
-              ))}
-            </div>
-            <div className="text-muted mt-3 grid grid-cols-12 text-center text-[10px]">
-              {['Sep', 'Oct', 'Nov', 'Dic', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago'].map((month) => (
-                <span key={month}>{month}</span>
-              ))}
-            </div>
+                <h3 className="text-primary mt-4 text-sm font-semibold">No se pudo cargar el dashboard</h3>
+                <p className="text-muted mt-1 text-xs">{summaryQuery.error.message}</p>
+                <button className="secondary-button mt-5 inline-flex gap-2" type="button" onClick={() => void summaryQuery.refetch()}>
+                  <Search size={16} strokeWidth={iconStroke} /> Reintentar
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="dashboard-stat">
+                  <span>Clientes activos</span>
+                  <strong>{summaryQuery.isLoading ? '...' : String(summary?.customers.active ?? 0)}</strong>
+                </div>
+                <div className="dashboard-stat">
+                  <span>Clientes VIP</span>
+                  <strong>{summaryQuery.isLoading ? '...' : String(summary?.customers.vip ?? 0)}</strong>
+                </div>
+                <div className="dashboard-stat">
+                  <span>Empresas</span>
+                  <strong>{summaryQuery.isLoading ? '...' : String(summary?.customers.business ?? 0)}</strong>
+                </div>
+                <div className="dashboard-stat">
+                  <span>Imágenes</span>
+                  <strong>{summaryQuery.isLoading ? '...' : String(summary?.images.total ?? 0)}</strong>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
         <Card className="xl:col-span-4">
-          <CardHeader title="Estado de reparaciones" subtitle="18 órdenes abiertas" />
+          <CardHeader title="Estado de clientes" subtitle="Distribución por estado" action={null} />
           <div className="flex flex-col items-center px-6 pb-6 pt-5">
-            <div className="repair-ring" role="img" aria-label="67 por ciento de reparaciones en proceso">
+            <div
+              className="repair-ring"
+              role="img"
+              aria-label={`${activeRatio} por ciento de clientes activos`}
+              style={{ background: `conic-gradient(var(--accent) 0 ${activeRatio}%, var(--accent-soft) ${activeRatio}% 100%)` }}
+            >
               <div className="repair-ring__center">
-                <strong>67%</strong>
-                <span>En proceso</span>
+                <strong>{summaryQuery.isLoading ? '...' : `${activeRatio}%`}</strong>
+                <span>Activos</span>
               </div>
             </div>
             <div className="mt-7 grid w-full grid-cols-3 gap-2 text-center">
-              <div><strong className="text-primary block text-base">6</strong><span className="text-muted text-[11px]">Diagnóstico</span></div>
-              <div><strong className="text-primary block text-base">8</strong><span className="text-muted text-[11px]">Reparación</span></div>
-              <div><strong className="text-primary block text-base">4</strong><span className="text-muted text-[11px]">Listos</span></div>
+              <div><strong className="text-primary block text-base">{summaryQuery.isLoading ? '...' : String(summary?.customers.active ?? 0)}</strong><span className="text-muted text-[11px]">Activos</span></div>
+              <div><strong className="text-primary block text-base">{summaryQuery.isLoading ? '...' : String(summary?.customers.vip ?? 0)}</strong><span className="text-muted text-[11px]">VIP</span></div>
+              <div><strong className="text-primary block text-base">{summaryQuery.isLoading ? '...' : String(summary?.customers.total ?? 0)}</strong><span className="text-muted text-[11px]">Total</span></div>
             </div>
           </div>
         </Card>
@@ -828,55 +869,66 @@ function DashboardPage({ theme }: { theme: Theme }) {
       <div className="grid gap-6 xl:grid-cols-12">
         <Card className="overflow-hidden xl:col-span-8">
           <CardHeader
-            title="Reparaciones recientes"
-            subtitle="Últimos movimientos del taller"
-            action={<NavLink className="text-primary text-xs font-medium hover:underline" to="/reparaciones">Ver todas</NavLink>}
+            title="Clientes recientes"
+            subtitle="Últimos registros guardados en la base"
+            action={<NavLink className="text-primary text-xs font-medium hover:underline" to="/clientes">Ver todos</NavLink>}
           />
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-sm">
-              <thead className="table-head text-[11px] uppercase">
-                <tr>
-                  <th className="px-6 py-3 font-medium">Orden</th>
-                  <th className="px-4 py-3 font-medium">Cliente</th>
-                  <th className="px-4 py-3 font-medium">Equipo</th>
-                  <th className="px-6 py-3 font-medium">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {repairActivity.map((repair) => (
-                  <tr className="table-row" key={repair.number}>
-                    <td className="text-primary px-6 py-4 font-medium">{repair.number}</td>
-                    <td className="text-primary px-4 py-4">{repair.customer}</td>
-                    <td className="text-secondary px-4 py-4">{repair.device}</td>
-                    <td className="px-6 py-4"><span className={`status-badge status-badge--${repair.tone}`}>{repair.status}</span></td>
+          {summary?.recentCustomers.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[680px] text-left text-sm">
+                <thead className="table-head text-[11px] uppercase">
+                  <tr>
+                    <th className="px-6 py-3 font-medium">Cliente</th>
+                    <th className="px-4 py-3 font-medium">Contacto</th>
+                    <th className="px-4 py-3 font-medium">Equipo</th>
+                    <th className="px-6 py-3 font-medium">Estado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {summary.recentCustomers.map((customer) => (
+                    <tr className="table-row" key={customer.id}>
+                      <td className="text-primary px-6 py-4 font-medium">{customer.name}</td>
+                      <td className="text-secondary px-4 py-4">{customer.phone || customer.email || 'Sin contacto'}</td>
+                      <td className="text-secondary px-4 py-4">{customer.lastDevice || 'Sin registrar'}</td>
+                      <td className="px-6 py-4"><span className={`status-badge customer-status--${customer.status}`}>{customerStatusLabels[customer.status]}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="shopping-empty">
+              <div className="placeholder-icon grid h-12 w-12 place-items-center rounded-lg">
+                <Users size={22} strokeWidth={iconStroke} />
+              </div>
+              <h3 className="text-primary mt-4 text-sm font-semibold">{summaryQuery.isLoading ? 'Cargando clientes' : 'No hay clientes registrados'}</h3>
+              <p className="text-muted mt-1 text-xs">{summaryQuery.isLoading ? 'Cargando información.' : 'Agrega clientes para empezar el seguimiento.'}</p>
+            </div>
+          )}
         </Card>
 
         <Card className="xl:col-span-4">
           <CardHeader
-            title="Stock crítico"
-            subtitle="Productos bajo el mínimo"
-            action={<NavLink className="text-primary text-xs font-medium hover:underline" to="/inventario">Inventario</NavLink>}
+            title="Acciones rápidas"
+            subtitle="Atajos frecuentes de operación"
+            action={null}
           />
           <div className="inventory-list px-5 pb-3 pt-3 sm:px-6">
-            {inventoryAlerts.map((item) => (
-              <div className="flex items-center gap-3 py-4" key={item.sku}>
+            {[
+              { label: 'Registrar cliente', detail: 'Agregar datos de contacto y equipo', path: '/clientes', icon: Users },
+              { label: 'Actualizar perfil', detail: 'Editar nombre, correo y foto', path: '/perfil', icon: UserRound },
+              { label: 'Revisar configuración', detail: 'Ajustar parámetros operativos', path: '/configuracion', icon: Settings },
+            ].map((item) => (
+              <NavLink className="flex items-center gap-3 py-4" key={item.path} to={item.path}>
                 <div className="metric-icon grid h-10 w-10 shrink-0 place-items-center rounded-lg">
-                  <Boxes size={19} strokeWidth={iconStroke} />
+                  <item.icon size={19} strokeWidth={iconStroke} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-primary truncate text-sm font-medium">{item.name}</p>
-                  <p className="text-muted mt-0.5 text-[11px]">{item.sku}</p>
+                  <p className="text-primary truncate text-sm font-medium">{item.label}</p>
+                  <p className="text-muted mt-0.5 text-[11px]">{item.detail}</p>
                 </div>
-                <div className="text-right">
-                  <strong className="text-primary text-sm">{item.stock}</strong>
-                  <p className="text-muted text-[10px]">mín. {item.minimum}</p>
-                </div>
-              </div>
+                <ChevronRight className="text-muted" size={15} strokeWidth={iconStroke} />
+              </NavLink>
             ))}
           </div>
         </Card>
@@ -982,7 +1034,6 @@ function ShoppingListPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-primary text-xl font-semibold">Lista de compras</h2>
           <p className="text-secondary mt-1 text-sm">Organiza lo que necesitas comprar próximamente.</p>
         </div>
         <button className="primary-button inline-flex gap-2 self-start" type="button" onClick={() => setFormOpen(true)}>
@@ -1292,7 +1343,6 @@ function SuppliersPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-primary text-xl font-semibold">Proveedores</h2>
           <p className="text-secondary mt-1 text-sm">Administra contactos, categorías y condiciones de compra.</p>
         </div>
         <button className="primary-button inline-flex gap-2 self-start" type="button" onClick={() => setFormOpen(true)}>
@@ -1641,7 +1691,6 @@ function InventoryPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-primary text-xl font-semibold">Inventario</h2>
           <p className="text-secondary mt-1 text-sm">Controla stock, costos, precios y ubicación de productos.</p>
         </div>
         <button className="primary-button inline-flex gap-2 self-start" type="button" onClick={() => setFormOpen(true)}>
@@ -1979,7 +2028,6 @@ function SalesPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-primary text-xl font-semibold">Ventas</h2>
           <p className="text-secondary mt-1 text-sm">Registra ventas rápidas y controla el estado de cobro.</p>
         </div>
         <button className="primary-button inline-flex gap-2 self-start" type="button" onClick={() => setFormOpen(true)}>
@@ -2282,6 +2330,11 @@ function CustomersPage() {
   }
 
   const removeCustomer = (id: string) => {
+    const customer = customers.find((item) => item.id === id)
+    const confirmed = window.confirm(`¿Eliminar ${customer?.name ?? 'este cliente'}? Esta acción no se puede deshacer.`)
+
+    if (!confirmed) return
+
     deleteCustomerMutation.mutate(id)
   }
 
@@ -2289,7 +2342,6 @@ function CustomersPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-primary text-xl font-semibold">Clientes</h2>
           <p className="text-secondary mt-1 text-sm">Centraliza datos de contacto, equipos y estado del cliente.</p>
         </div>
         <button className="primary-button inline-flex gap-2 self-start" type="button" onClick={() => setFormOpen(true)}>
@@ -2354,7 +2406,7 @@ function CustomersPage() {
               <Users size={22} strokeWidth={iconStroke} />
             </div>
             <h3 className="text-primary mt-4 text-sm font-semibold">Cargando clientes</h3>
-            <p className="text-muted mt-1 text-xs">Consultando la base de datos de BlackCell.</p>
+            <p className="text-muted mt-1 text-xs">Cargando información de clientes.</p>
           </div>
         ) : customersQuery.isError ? (
           <div className="shopping-empty">
@@ -2363,6 +2415,9 @@ function CustomersPage() {
             </div>
             <h3 className="text-primary mt-4 text-sm font-semibold">No se pudieron cargar los clientes</h3>
             <p className="text-muted mt-1 text-xs">{customersQuery.error.message}</p>
+            <button className="secondary-button mt-5 inline-flex gap-2" type="button" onClick={() => void customersQuery.refetch()}>
+              <Search size={16} strokeWidth={iconStroke} /> Reintentar
+            </button>
           </div>
         ) : visibleCustomers.length ? (
           <div className="overflow-x-auto">
@@ -2446,7 +2501,7 @@ function CustomersPage() {
               {customers.length ? 'No hay coincidencias' : 'No hay clientes registrados'}
             </h3>
             <p className="text-muted mt-1 text-xs">
-              {customers.length ? 'Prueba con otro filtro o término de búsqueda.' : 'Agrega el primer cliente para comenzar tu base de datos.'}
+              {customers.length ? 'Prueba con otro filtro o término de búsqueda.' : 'Agrega el primer cliente para comenzar el seguimiento.'}
             </p>
             {!customers.length ? (
               <button className="secondary-button mt-5 inline-flex gap-2" type="button" onClick={() => setFormOpen(true)}>
@@ -2567,7 +2622,8 @@ function getModuleFormSchema(fields: ModuleField[]) {
 }
 
 function readMoneyValue(value: string | undefined) {
-  return Number(value || 0)
+  const amount = Number(value || 0)
+  return Number.isFinite(amount) && amount > 0 ? amount : 0
 }
 
 function SimpleOperationsPage({ config }: { config: SimpleModuleConfig }) {
@@ -2630,6 +2686,12 @@ function SimpleOperationsPage({ config }: { config: SimpleModuleConfig }) {
   }
 
   const removeRecord = (id: string) => {
+    const record = records.find((item) => item.id === id)
+    const label = record?.[config.primaryField] ?? 'este registro'
+    const confirmed = window.confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`)
+
+    if (!confirmed) return
+
     setRecords((currentRecords) => currentRecords.filter((record) => record.id !== id))
   }
 
@@ -2637,7 +2699,6 @@ function SimpleOperationsPage({ config }: { config: SimpleModuleConfig }) {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-primary text-xl font-semibold">{config.title}</h2>
           <p className="text-secondary mt-1 text-sm">{config.subtitle}</p>
         </div>
         <button className="primary-button inline-flex gap-2 self-start" type="button" onClick={() => setFormOpen(true)}>
@@ -3100,7 +3161,6 @@ function ReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-primary text-xl font-semibold">Reportes</h2>
         <p className="text-secondary mt-1 text-sm">Resumen local de ventas, gastos, inventario, reparaciones y compras.</p>
       </div>
 
@@ -3148,16 +3208,16 @@ function ReportsPage() {
   )
 }
 
-function PlaceholderPage({ title }: { title: string }) {
+function NotFoundPage() {
   return (
     <div className="grid min-h-[420px] place-items-center">
       <Card className="w-full max-w-xl p-8 text-center">
         <div className="placeholder-icon mx-auto grid h-14 w-14 place-items-center rounded-xl">
           <ClipboardList size={26} strokeWidth={iconStroke} />
         </div>
-        <h2 className="text-primary mt-5 text-xl font-semibold">{title}</h2>
+        <h2 className="text-primary mt-5 text-xl font-semibold">Página no encontrada</h2>
         <p className="text-secondary mx-auto mt-2 max-w-md text-sm leading-6">
-          Este módulo conserva el nuevo sistema visual y está preparado para incorporar sus flujos operativos.
+          La sección que buscaste no existe o cambió de ubicación.
         </p>
         <NavLink className="secondary-button mt-6 inline-flex" to="/">Volver al dashboard</NavLink>
       </Card>
@@ -3208,7 +3268,7 @@ function Sidebar({ open, onClose, theme }: { open: boolean; onClose: () => void;
                   >
                     <item.icon size={19} strokeWidth={iconStroke} />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {item.badge ? <span className="sidebar-badge">{item.badge}</span> : <ChevronRight className="opacity-0 transition-opacity group-hover:opacity-40" size={14} />}
+                    <ChevronRight className="opacity-0 transition-opacity group-hover:opacity-40" size={14} />
                   </NavLink>
                 ))}
               </div>
@@ -3234,22 +3294,34 @@ function Topbar({
   onToggleTheme: () => void
 }) {
   const [profileOpen, setProfileOpen] = useState(false)
+  const [globalSearch, setGlobalSearch] = useState('')
+  const navigate = useNavigate()
   const roleLabel = user.role === 'administrador' ? 'Administrador' : user.role
+
+  const onGlobalSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const route = getRouteForSearch(globalSearch)
+    if (route) {
+      navigate(route)
+    }
+  }
 
   return (
     <header className="topbar">
       <button className="icon-button lg:!hidden" type="button" aria-label="Abrir menú" onClick={onOpenMenu}>
         <Menu size={22} strokeWidth={iconStroke} />
       </button>
-      <label className="flex min-w-0 flex-1 items-center gap-3" htmlFor="global-search">
+      <form className="flex min-w-0 flex-1 items-center gap-3" role="search" onSubmit={onGlobalSearchSubmit}>
         <Search className="text-secondary shrink-0" size={20} strokeWidth={iconStroke} />
         <input
           className="search-input w-full bg-transparent text-sm outline-none"
           id="global-search"
           type="search"
           placeholder="Buscar reparación, cliente o producto"
+          value={globalSearch}
+          onChange={(event) => setGlobalSearch(event.target.value)}
         />
-      </label>
+      </form>
       <button
         className="icon-button"
         type="button"
@@ -3633,7 +3705,8 @@ function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const pageTitle = routeTitles[location.pathname] ?? 'Dashboard'
+  const pageTitle = routeTitles[location.pathname] ?? 'Página no encontrada'
+  const currentDate = useMemo(formatCurrentDate, [])
   const sessionQuery = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: getCurrentSession,
@@ -3672,7 +3745,7 @@ function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
               <p className="text-muted text-xs">BlackCell Manager</p>
               <h1 className="text-primary mt-1 text-2xl font-semibold">{pageTitle}</h1>
             </div>
-            <p className="text-muted text-xs">Lunes, 31 de agosto de 2026</p>
+            <p className="text-muted text-xs capitalize">{currentDate}</p>
           </div>
           <Routes>
             <Route path="/" element={<DashboardPage theme={theme} />} />
@@ -3688,21 +3761,7 @@ function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
             <Route path="/usuarios" element={<UsersPage />} />
             <Route path="/configuracion" element={<SettingsPage />} />
             <Route path="/perfil" element={<ProfilePage />} />
-            {navigation.flatMap((section) => section.items).slice(1).filter((item) => ![
-              '/reparaciones',
-              '/clientes',
-              '/ventas',
-              '/inventario',
-              '/compras',
-              '/proveedores',
-              '/caja',
-              '/gastos',
-              '/reportes',
-              '/usuarios',
-              '/configuracion',
-            ].includes(item.path)).map((item) => (
-              <Route key={item.path} path={item.path} element={<PlaceholderPage title={item.label} />} />
-            ))}
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </div>
       </main>
