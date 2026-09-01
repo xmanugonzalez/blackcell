@@ -10,6 +10,14 @@ import { authRouter } from './modules/auth.js'
 import { customersRouter } from './modules/customers.js'
 import { imagesRouter } from './modules/images.js'
 
+function isJsonParseError(error: unknown): error is SyntaxError & { status: number; type: string } {
+  return error instanceof SyntaxError
+    && 'status' in error
+    && 'type' in error
+    && (error as { status?: unknown }).status === 400
+    && (error as { type?: unknown }).type === 'entity.parse.failed'
+}
+
 export function createApp(): express.Express {
   const app = express()
 
@@ -48,6 +56,12 @@ export function createApp(): express.Express {
       _next: express.NextFunction,
     ) => {
       void _next
+
+      if (isJsonParseError(error)) {
+        response.status(400).json(failure('INVALID_JSON', 'El cuerpo de la solicitud no es un JSON valido.'))
+        return
+      }
+
       console.error(error)
       response.status(500).json(failure('INTERNAL_SERVER_ERROR', 'Ocurrio un error inesperado.'))
     },
