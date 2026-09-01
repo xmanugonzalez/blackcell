@@ -530,10 +530,10 @@ function ProfilePhotoUploader({ user }: { user: AuthUser }) {
   return (
     <div className="profile-photo-uploader">
       <UserAvatar size="lg" user={user} />
-      <div className="min-w-0">
+      <div className="min-w-0 text-center">
         <p className="text-primary text-sm font-semibold">Foto de perfil</p>
         <p className="text-muted mt-1 text-xs">Usa una imagen JPG, PNG o WebP de hasta 5 MB.</p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex items-center justify-center gap-2">
           <label className="secondary-button inline-flex gap-2" htmlFor={inputId}>
             <UploadCloud size={15} strokeWidth={iconStroke} />
             {profileImage ? 'Cambiar foto' : 'Subir foto'}
@@ -3553,7 +3553,7 @@ function ProfilePage() {
     <div className="space-y-6">
       <Card className="overflow-hidden">
         <div className="grid gap-6 p-6 lg:grid-cols-[280px_1fr]">
-          <div className="profile-summary rounded-lg p-5">
+          <div className="profile-summary rounded-lg p-5 text-center">
             <ProfilePhotoUploader user={user} />
             <h2 className="text-primary mt-5 text-xl font-semibold">{user.name}</h2>
             <p className="text-muted mt-1 text-sm">{user.email}</p>
