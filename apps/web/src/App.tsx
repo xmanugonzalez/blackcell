@@ -54,9 +54,11 @@ import {
   type ApiResponse,
   type AuthSession,
   type AuthUser,
+  type ChangePasswordInput,
   type Customer as CustomerDto,
   type CustomerInput,
   type LoginInput,
+  type UpdateProfileInput,
 } from '@black-cell/shared'
 import heroForDarkTheme from './assets/blackcell-dashboard-hero-on-dark.webp'
 import heroForLightTheme from './assets/blackcell-dashboard-hero-on-light.webp'
@@ -79,6 +81,23 @@ const loginSchema = z.object({
 })
 
 type LoginFormValues = z.infer<typeof loginSchema>
+
+const profileSchema = z.object({
+  name: z.string().trim().min(2, 'Ingresa tu nombre').max(120, 'El nombre es demasiado largo'),
+  email: z.string().trim().min(1, 'Ingresa tu correo').email('Ingresa un correo válido'),
+})
+
+const passwordSchema = z.object({
+  currentPassword: z.string().min(1, 'Ingresa tu contraseña actual').min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  newPassword: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres').max(128, 'La contraseña es demasiado larga'),
+  confirmPassword: z.string().min(1, 'Confirma la nueva contraseña'),
+}).refine((values) => values.newPassword === values.confirmPassword, {
+  message: 'Las contraseñas no coinciden',
+  path: ['confirmPassword'],
+})
+
+type ProfileFormValues = z.infer<typeof profileSchema>
+type PasswordFormValues = z.infer<typeof passwordSchema>
 
 const shoppingItemFormSchema = z.object({
   name: z.string().trim().min(2, 'Ingresa el nombre del producto'),
@@ -310,6 +329,20 @@ function logout() {
   return apiRequest<{ loggedOut: boolean }>('/auth/logout', { method: 'POST' })
 }
 
+function updateProfile(input: UpdateProfileInput) {
+  return apiRequest<AuthSession>('/auth/me', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
+function changePassword(input: ChangePasswordInput) {
+  return apiRequest<{ passwordChanged: boolean }>('/auth/password', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
 const moduleRecordSchema = z.object({
   id: z.string(),
   createdAt: z.string(),
@@ -432,6 +465,8 @@ const monthSales = [52, 70, 43, 78, 61, 89, 68, 94, 76, 100, 83, 91]
 const routeTitles: Record<string, string> = Object.fromEntries(
   navigation.flatMap((section) => section.items.map((item) => [item.path, item.label])),
 )
+
+routeTitles['/perfil'] = 'Mi perfil'
 
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <section className={`dashboard-card ${className}`}>{children}</section>
@@ -3011,7 +3046,7 @@ function Topbar({
         </button>
         {profileOpen ? (
           <div className="profile-menu absolute right-0 top-12 z-10 w-48 rounded-lg p-2">
-            <NavLink className="dropdown-link" to="/configuracion" onClick={() => setProfileOpen(false)}>Mi perfil</NavLink>
+            <NavLink className="dropdown-link" to="/perfil" onClick={() => setProfileOpen(false)}>Mi perfil</NavLink>
             <NavLink className="dropdown-link" to="/configuracion" onClick={() => setProfileOpen(false)}>Configuración</NavLink>
             <button className="dropdown-link w-full text-left" type="button" onClick={() => {
               setProfileOpen(false)
@@ -3188,6 +3223,184 @@ function LoginPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
   )
 }
 
+function ProfilePage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [profileMessage, setProfileMessage] = useState<string | null>(null)
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
+  const sessionQuery = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: getCurrentSession,
+    retry: false,
+  })
+  const user = sessionQuery.data?.user
+  const profileMutation = useMutation({
+    mutationFn: updateProfile,
+    onSuccess: (session) => {
+      queryClient.setQueryData(['auth', 'me'], session)
+      setProfileMessage('Perfil actualizado correctamente.')
+    },
+  })
+  const passwordMutation = useMutation({
+    mutationFn: changePassword,
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['auth', 'me'] })
+      navigate('/login')
+    },
+  })
+  const {
+    register: registerProfile,
+    handleSubmit: handleProfileSubmit,
+    reset: resetProfile,
+    setError: setProfileError,
+    formState: { errors: profileErrors },
+  } = useForm<ProfileFormValues>({
+    defaultValues: { name: '', email: '' },
+  })
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    reset: resetPassword,
+    setError: setPasswordError,
+    formState: { errors: passwordErrors },
+  } = useForm<PasswordFormValues>({
+    defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
+  })
+
+  useEffect(() => {
+    if (user) {
+      resetProfile({ name: user.name, email: user.email })
+    }
+  }, [resetProfile, user])
+
+  const onProfileSubmit: SubmitHandler<ProfileFormValues> = (values) => {
+    setProfileMessage(null)
+    const result = profileSchema.safeParse(values)
+
+    if (!result.success) {
+      result.error.issues.forEach((issue) => {
+        const field = issue.path[0]
+        if (field === 'name' || field === 'email') {
+          setProfileError(field, { message: issue.message })
+        }
+      })
+      return
+    }
+
+    profileMutation.mutate(result.data)
+  }
+
+  const onPasswordSubmit: SubmitHandler<PasswordFormValues> = (values) => {
+    setPasswordMessage(null)
+    const result = passwordSchema.safeParse(values)
+
+    if (!result.success) {
+      result.error.issues.forEach((issue) => {
+        const field = issue.path[0]
+        if (field === 'currentPassword' || field === 'newPassword' || field === 'confirmPassword') {
+          setPasswordError(field, { message: issue.message })
+        }
+      })
+      return
+    }
+
+    passwordMutation.mutate({
+      currentPassword: result.data.currentPassword,
+      newPassword: result.data.newPassword,
+    }, {
+      onSuccess: () => resetPassword(),
+    })
+  }
+
+  if (sessionQuery.isLoading || !user) {
+    return (
+      <Card className="p-6">
+        <p className="text-secondary text-sm">Cargando perfil...</p>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="overflow-hidden">
+        <div className="grid gap-6 p-6 lg:grid-cols-[280px_1fr]">
+          <div className="profile-summary rounded-lg p-5">
+            <div className="avatar grid h-16 w-16 place-items-center rounded-xl text-lg font-semibold">
+              {user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toLocaleUpperCase('es')}
+            </div>
+            <h2 className="text-primary mt-5 text-xl font-semibold">{user.name}</h2>
+            <p className="text-muted mt-1 text-sm">{user.email}</p>
+            <span className="status-badge status-badge--success mt-5 inline-flex">
+              {user.role === 'administrador' ? 'Administrador' : user.role}
+            </span>
+          </div>
+
+          <form className="shopping-form" noValidate onSubmit={handleProfileSubmit(onProfileSubmit)}>
+            <div className="sm:col-span-2">
+              <h3 className="text-primary text-base font-semibold">Datos personales</h3>
+              <p className="text-muted mt-1 text-xs">Actualiza tu identidad visible dentro de BlackCell Manager.</p>
+            </div>
+            <div className="form-field">
+              <label htmlFor="profile-name">Nombre</label>
+              <input className="shopping-input" id="profile-name" {...registerProfile('name')} />
+              {profileErrors.name ? <p className="field-error">{profileErrors.name.message}</p> : null}
+            </div>
+            <div className="form-field">
+              <label htmlFor="profile-email">Correo</label>
+              <input className="shopping-input" id="profile-email" type="email" {...registerProfile('email')} />
+              {profileErrors.email ? <p className="field-error">{profileErrors.email.message}</p> : null}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-2">
+              <div>
+                {profileMessage ? <p className="text-secondary text-xs">{profileMessage}</p> : null}
+                {profileMutation.isError ? <p className="field-error">{profileMutation.error.message}</p> : null}
+              </div>
+              <button className="primary-button inline-flex gap-2" type="submit" disabled={profileMutation.isPending}>
+                <Check size={16} strokeWidth={iconStroke} />
+                {profileMutation.isPending ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <form className="shopping-form" noValidate onSubmit={handlePasswordSubmit(onPasswordSubmit)}>
+          <div className="sm:col-span-2">
+            <h3 className="text-primary text-base font-semibold">Seguridad</h3>
+            <p className="text-muted mt-1 text-xs">Al cambiar tu contraseña, se cerrará la sesión actual para volver a ingresar.</p>
+          </div>
+          <div className="form-field">
+            <label htmlFor="profile-current-password">Contraseña actual</label>
+            <input className="shopping-input" id="profile-current-password" type="password" autoComplete="current-password" {...registerPassword('currentPassword')} />
+            {passwordErrors.currentPassword ? <p className="field-error">{passwordErrors.currentPassword.message}</p> : null}
+          </div>
+          <div className="form-field">
+            <label htmlFor="profile-new-password">Nueva contraseña</label>
+            <input className="shopping-input" id="profile-new-password" type="password" autoComplete="new-password" {...registerPassword('newPassword')} />
+            {passwordErrors.newPassword ? <p className="field-error">{passwordErrors.newPassword.message}</p> : null}
+          </div>
+          <div className="form-field">
+            <label htmlFor="profile-confirm-password">Confirmar contraseña</label>
+            <input className="shopping-input" id="profile-confirm-password" type="password" autoComplete="new-password" {...registerPassword('confirmPassword')} />
+            {passwordErrors.confirmPassword ? <p className="field-error">{passwordErrors.confirmPassword.message}</p> : null}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-2">
+            <div>
+              {passwordMessage ? <p className="text-secondary text-xs">{passwordMessage}</p> : null}
+              {passwordMutation.isError ? <p className="field-error">{passwordMutation.error.message}</p> : null}
+            </div>
+            <button className="primary-button inline-flex gap-2" type="submit" disabled={passwordMutation.isPending}>
+              <LockKeyhole size={16} strokeWidth={iconStroke} />
+              {passwordMutation.isPending ? 'Actualizando...' : 'Cambiar contraseña'}
+            </button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  )
+}
+
 function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const location = useLocation()
@@ -3254,6 +3467,7 @@ function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
             <Route path="/reportes" element={<ReportsPage />} />
             <Route path="/usuarios" element={<UsersPage />} />
             <Route path="/configuracion" element={<SettingsPage />} />
+            <Route path="/perfil" element={<ProfilePage />} />
             {navigation.flatMap((section) => section.items).slice(1).filter((item) => ![
               '/reparaciones',
               '/clientes',

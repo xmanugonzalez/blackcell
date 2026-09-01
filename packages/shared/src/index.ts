@@ -52,6 +52,16 @@ export type AuthSession = {
   user: AuthUser
 }
 
+export type UpdateProfileInput = {
+  name: string
+  email: string
+}
+
+export type ChangePasswordInput = {
+  currentPassword: string
+  newPassword: string
+}
+
 export const customerTypes = ['regular', 'frequent', 'business'] as const
 export const customerStatuses = ['active', 'vip', 'inactive'] as const
 

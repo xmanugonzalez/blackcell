@@ -285,6 +285,13 @@ input:focus-visible {
   box-shadow: var(--shadow-raised);
 }
 
+.profile-summary {
+  border: 1px solid var(--border-soft);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--surface-subtle) 86%, transparent), transparent 72%),
+    var(--surface-subtle);
+}
+
 .primary-button,
 .secondary-button {
   min-height: 36px;
