@@ -3546,11 +3546,7 @@ function ProfilePage() {
   }
 
   if (sessionQuery.isLoading || !user) {
-    return (
-      <Card className="p-6">
-        <p className="text-secondary text-sm">Cargando perfil...</p>
-      </Card>
-    )
+    return <div className="min-h-52" aria-hidden="true" />
   }
 
   return (
