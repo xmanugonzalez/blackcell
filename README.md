@@ -90,6 +90,7 @@ NODE_ENV=production
 API_PORT=3000
 CORS_ORIGIN=https://blackcell.lat
 DATABASE_URL=postgresql://blackcell:password_seguro@postgres:5432/blackcell?schema=public
+JWT_SECRET=jwt_secret_seguro_de_32_caracteres_o_mas
 ```
 
 Comandos principales en el VPS:
@@ -98,6 +99,16 @@ Comandos principales en el VPS:
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml exec api pnpm --filter @black-cell/database exec prisma migrate deploy
 curl https://api.blackcell.lat/health
+```
+
+Para crear o actualizar el primer administrador:
+
+```bash
+docker compose -f docker-compose.prod.yml exec \
+  -e ADMIN_EMAIL=admin@blackcell.lat \
+  -e ADMIN_PASSWORD=password_temporal_seguro \
+  -e ADMIN_NAME="Pedro Admin" \
+  api pnpm --filter @black-cell/api seed:admin
 ```
 
 ## Backups

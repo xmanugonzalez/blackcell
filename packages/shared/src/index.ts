@@ -31,6 +31,27 @@ export type HealthStatus = {
   timestamp: string
 }
 
+export const userRoles = ['administrador', 'gerente', 'tecnico', 'cajero'] as const
+
+export type UserRole = typeof userRoles[number]
+
+export type AuthUser = {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+}
+
+export type LoginInput = {
+  email: string
+  password: string
+  remember: boolean
+}
+
+export type AuthSession = {
+  user: AuthUser
+}
+
 export const customerTypes = ['regular', 'frequent', 'business'] as const
 export const customerStatuses = ['active', 'vip', 'inactive'] as const
 

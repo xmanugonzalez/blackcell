@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm, type SubmitHandler } from 'react-hook-form'
-import { BrowserRouter, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { z } from 'zod'
 import {
   ArrowDownRight,
@@ -49,7 +49,15 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { formatGuarani, type ApiResponse, type Customer as CustomerDto, type CustomerInput } from '@black-cell/shared'
+import {
+  formatGuarani,
+  type ApiResponse,
+  type AuthSession,
+  type AuthUser,
+  type Customer as CustomerDto,
+  type CustomerInput,
+  type LoginInput,
+} from '@black-cell/shared'
 import heroForDarkTheme from './assets/blackcell-dashboard-hero-on-dark.webp'
 import heroForLightTheme from './assets/blackcell-dashboard-hero-on-light.webp'
 import logoForDarkTheme from './assets/blackcell-logo-on-dark.svg'
@@ -252,6 +260,7 @@ const customerStatusLabels: Record<Customer['status'], string> = {
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...init?.headers,
@@ -284,6 +293,21 @@ function createCustomer(customer: CustomerInput) {
 
 function deleteCustomer(id: string) {
   return apiRequest<void>(`/clientes/${id}`, { method: 'DELETE' })
+}
+
+function getCurrentSession() {
+  return apiRequest<AuthSession>('/auth/me')
+}
+
+function login(input: LoginInput) {
+  return apiRequest<AuthSession>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+function logout() {
+  return apiRequest<{ loggedOut: boolean }>('/auth/logout', { method: 'POST' })
 }
 
 const moduleRecordSchema = z.object({
@@ -2931,13 +2955,18 @@ function Sidebar({ open, onClose, theme }: { open: boolean; onClose: () => void;
 function Topbar({
   onOpenMenu,
   theme,
+  user,
+  onLogout,
   onToggleTheme,
 }: {
   onOpenMenu: () => void
   theme: Theme
+  user: AuthUser
+  onLogout: () => void
   onToggleTheme: () => void
 }) {
   const [profileOpen, setProfileOpen] = useState(false)
+  const roleLabel = user.role === 'administrador' ? 'Administrador' : user.role
 
   return (
     <header className="topbar">
@@ -2975,8 +3004,8 @@ function Topbar({
         >
           <span className="avatar grid h-9 w-9 place-items-center rounded-lg text-xs font-semibold">PA</span>
           <span className="hidden xl:block">
-            <strong className="text-primary block text-xs font-medium">Pedro Admin</strong>
-            <span className="text-muted block text-[10px]">Administrador</span>
+            <strong className="text-primary block text-xs font-medium">{user.name}</strong>
+            <span className="text-muted block text-[10px]">{roleLabel}</span>
           </span>
           <ChevronDown className="text-muted hidden xl:block" size={14} />
         </button>
@@ -2984,7 +3013,12 @@ function Topbar({
           <div className="profile-menu absolute right-0 top-12 z-10 w-48 rounded-lg p-2">
             <NavLink className="dropdown-link" to="/configuracion" onClick={() => setProfileOpen(false)}>Mi perfil</NavLink>
             <NavLink className="dropdown-link" to="/configuracion" onClick={() => setProfileOpen(false)}>Configuración</NavLink>
-            <NavLink className="dropdown-link" to="/login" onClick={() => setProfileOpen(false)}>Cerrar sesión</NavLink>
+            <button className="dropdown-link w-full text-left" type="button" onClick={() => {
+              setProfileOpen(false)
+              onLogout()
+            }}>
+              Cerrar sesión
+            </button>
           </div>
         ) : null}
       </div>
@@ -2994,9 +3028,26 @@ function Topbar({
 
 function LoginPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [assistanceVisible, setAssistanceVisible] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const currentSessionQuery = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: getCurrentSession,
+    retry: false,
+  })
+  const loginMutation = useMutation({
+    mutationFn: login,
+    onSuccess: async (session) => {
+      queryClient.setQueryData(['auth', 'me'], session)
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
+      navigate('/')
+    },
+    onError: (error) => {
+      setLoginError(error.message)
+    },
+  })
   const {
     register,
     handleSubmit,
@@ -3007,6 +3058,7 @@ function LoginPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
   })
 
   const onSubmit: SubmitHandler<LoginFormValues> = async (values) => {
+    setLoginError(null)
     const result = loginSchema.safeParse(values)
 
     if (!result.success) {
@@ -3019,10 +3071,14 @@ function LoginPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
       return
     }
 
-    setIsSubmitting(true)
-    await new Promise((resolve) => window.setTimeout(resolve, 650))
-    navigate('/')
+    loginMutation.mutate(result.data)
   }
+
+  useEffect(() => {
+    if (currentSessionQuery.data) {
+      navigate('/')
+    }
+  }, [currentSessionQuery.data, navigate])
 
   return (
     <main className="login-page min-h-[100dvh]">
@@ -3113,11 +3169,15 @@ function LoginPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
               <span>Mantener mi sesión iniciada</span>
             </label>
 
-            <button className="login-submit" type="submit" disabled={isSubmitting}>
-              <span>{isSubmitting ? 'Verificando acceso...' : 'Ingresar al sistema'}</span>
+            <button className="login-submit" type="submit" disabled={loginMutation.isPending}>
+              <span>{loginMutation.isPending ? 'Verificando acceso...' : 'Ingresar al sistema'}</span>
               <ChevronRight size={18} strokeWidth={2} aria-hidden="true" />
             </button>
           </form>
+
+          {loginError ? (
+            <p className="login-assistance" role="alert">{loginError}</p>
+          ) : null}
 
           {assistanceVisible ? (
             <p className="login-assistance" role="status">Solicita al administrador de BlackCell el restablecimiento de tu acceso.</p>
@@ -3131,7 +3191,36 @@ function LoginPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
 function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const pageTitle = routeTitles[location.pathname] ?? 'Dashboard'
+  const sessionQuery = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: getCurrentSession,
+    retry: false,
+  })
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSettled: async () => {
+      queryClient.removeQueries({ queryKey: ['auth', 'me'] })
+      navigate('/login')
+    },
+  })
+
+  if (sessionQuery.isLoading) {
+    return (
+      <div className="app-shell grid min-h-[100dvh] place-items-center">
+        <Card className="w-full max-w-sm p-6 text-center">
+          <h1 className="text-primary text-lg font-semibold">Verificando sesión</h1>
+          <p className="text-muted mt-2 text-sm">Conectando con BlackCell Manager.</p>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!sessionQuery.data) {
+    return <Navigate replace to="/login" />
+  }
 
   return (
     <div className="app-shell min-h-[100dvh]">
@@ -3141,6 +3230,8 @@ function AppLayout({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =
           <Topbar
             onOpenMenu={() => setMenuOpen(true)}
             theme={theme}
+            user={sessionQuery.data.user}
+            onLogout={() => logoutMutation.mutate()}
             onToggleTheme={onToggleTheme}
           />
           <div className="mb-6 mt-7 flex flex-wrap items-end justify-between gap-3">
