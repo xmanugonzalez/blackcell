@@ -34,12 +34,14 @@ const imageIdSchema = z.object({
 const entityTypeToDb: Record<ImageEntityType, TipoEntidadImagen> = {
   producto: TipoEntidadImagen.PRODUCTO,
   reparacion: TipoEntidadImagen.REPARACION,
+  compra: TipoEntidadImagen.COMPRA,
   usuario: TipoEntidadImagen.USUARIO,
 }
 
 const entityTypeFromDb: Record<TipoEntidadImagen, ImageEntityType> = {
   [TipoEntidadImagen.PRODUCTO]: 'producto',
   [TipoEntidadImagen.REPARACION]: 'reparacion',
+  [TipoEntidadImagen.COMPRA]: 'compra',
   [TipoEntidadImagen.USUARIO]: 'usuario',
 }
 

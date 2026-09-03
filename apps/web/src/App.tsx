@@ -1121,6 +1121,10 @@ function ShoppingListPage() {
                         ) : null}
                       </div>
                       {item.notes ? <p className="text-muted mt-1 max-w-xs truncate text-[11px]">{item.notes}</p> : null}
+                      <div className="mt-3">
+                        <p className="text-muted text-[10px] font-medium uppercase">Fotos opcionales</p>
+                        <ImageUploader entityType="compra" entityId={item.id} />
+                      </div>
                     </td>
                     <td className="text-secondary px-4 py-4">{item.supplier || 'Sin definir'}</td>
                     <td className="text-primary px-4 py-4 text-center">{item.quantity}</td>

@@ -101,7 +101,7 @@ export type DashboardSummary = {
   recentCustomers: Customer[]
 }
 
-export const imageEntityTypes = ['producto', 'reparacion', 'usuario'] as const
+export const imageEntityTypes = ['producto', 'reparacion', 'compra', 'usuario'] as const
 
 export type ImageEntityType = typeof imageEntityTypes[number]
 
