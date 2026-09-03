@@ -1010,6 +1010,125 @@ input:focus-visible {
   font-size: 11px;
 }
 
+.purchase-image-picker {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 14px;
+}
+
+.purchase-image-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.purchase-image-picker__header label {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.purchase-image-picker__header p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.purchase-image-picker__button {
+  display: inline-flex;
+  min-height: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.purchase-image-picker__button:hover {
+  border-color: var(--text-primary);
+}
+
+.purchase-image-picker__button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.purchase-image-picker__empty {
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  text-align: center;
+}
+
+.purchase-image-picker__previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.purchase-image-picker__preview {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.purchase-image-picker__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.purchase-image-picker__preview button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 34%);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 76%);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+@media (max-width: 479px) {
+  .purchase-image-picker__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .purchase-image-picker__button {
+    width: 100%;
+  }
+}
+
 @media (min-width: 640px) {
   .shopping-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));

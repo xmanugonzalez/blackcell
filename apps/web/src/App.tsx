@@ -532,6 +532,104 @@ function ImageUploader({ entityId, entityType }: { entityId: string, entityType:
   )
 }
 
+function PurchaseImagePicker({
+  disabled,
+  errorMessage,
+  files,
+  onChange,
+}: {
+  disabled: boolean
+  errorMessage: string | null
+  files: File[]
+  onChange: (files: File[], errorMessage?: string) => void
+}) {
+  const previews = useMemo(() => files.map((file) => ({
+    file,
+    url: URL.createObjectURL(file),
+  })), [files])
+
+  useEffect(() => {
+    return () => previews.forEach((preview) => URL.revokeObjectURL(preview.url))
+  }, [previews])
+
+  const selectFiles = (selectedFiles: FileList | null) => {
+    if (!selectedFiles?.length) return
+
+    const nextFiles = [...files, ...Array.from(selectedFiles)]
+    const invalidType = nextFiles.some((file) => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
+    const oversizedFile = nextFiles.some((file) => file.size > 5 * 1024 * 1024)
+
+    if (nextFiles.length > 8) {
+      onChange(files, 'Puedes agregar hasta 8 imágenes.')
+      return
+    }
+
+    if (invalidType) {
+      onChange(files, 'Solo se permiten imágenes JPG, PNG o WebP.')
+      return
+    }
+
+    if (oversizedFile) {
+      onChange(files, 'Cada imagen debe pesar como máximo 5 MB.')
+      return
+    }
+
+    onChange(nextFiles)
+  }
+
+  return (
+    <div className="purchase-image-picker">
+      <div className="purchase-image-picker__header">
+        <div>
+          <label htmlFor="shopping-images">Fotos del producto</label>
+          <p>Opcional. JPG, PNG o WebP de hasta 5 MB.</p>
+        </div>
+        <label className="purchase-image-picker__button" htmlFor="shopping-images">
+          <UploadCloud size={16} strokeWidth={iconStroke} />
+          Añadir fotos
+          <input
+            id="shopping-images"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            disabled={disabled}
+            onChange={(event) => {
+              selectFiles(event.target.files)
+              event.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+
+      {previews.length ? (
+        <div className="purchase-image-picker__previews">
+          {previews.map(({ file, url }, index) => (
+            <div className="purchase-image-picker__preview" key={`${file.name}-${file.lastModified}-${index}`}>
+              <img src={url} alt={file.name} />
+              <button
+                type="button"
+                aria-label={`Quitar ${file.name}`}
+                title="Quitar foto"
+                disabled={disabled}
+                onClick={() => onChange(files.filter((_, fileIndex) => fileIndex !== index))}
+              >
+                <X size={14} strokeWidth={2} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <label className="purchase-image-picker__empty" htmlFor="shopping-images">
+          <ImageIcon size={19} strokeWidth={iconStroke} />
+          <span>Puedes adjuntar fotos de referencia antes de guardar.</span>
+        </label>
+      )}
+
+      {errorMessage ? <p className="field-error">{errorMessage}</p> : null}
+    </div>
+  )
+}
+
 function ProfilePhotoUploader({ user }: { user: AuthUser }) {
   const queryClient = useQueryClient()
   const queryKey = ['imagenes', 'usuario', user.id] as const
@@ -939,16 +1037,19 @@ function readShoppingList(): ShoppingItem[] {
 }
 
 function ShoppingListPage() {
+  const queryClient = useQueryClient()
   const [items, setItems] = useState<ShoppingItem[]>(readShoppingList)
   const [formOpen, setFormOpen] = useState(false)
   const [filter, setFilter] = useState<ShoppingListFilter>('pending')
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedImages, setSelectedImages] = useState<File[]>([])
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
     reset,
     setError,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<ShoppingItemFormValues>({
     defaultValues: {
       name: '',
@@ -985,10 +1086,12 @@ function ShoppingListPage() {
 
   const closeForm = () => {
     setFormOpen(false)
+    setSelectedImages([])
+    setImageUploadError(null)
     reset()
   }
 
-  const onSubmit: SubmitHandler<ShoppingItemFormValues> = (values) => {
+  const onSubmit: SubmitHandler<ShoppingItemFormValues> = async (values) => {
     const result = shoppingItemFormSchema.safeParse(values)
     if (!result.success) {
       result.error.issues.forEach((issue) => {
@@ -1000,12 +1103,25 @@ function ShoppingListPage() {
       return
     }
 
-    setItems((currentItems) => [{
+    const item: ShoppingItem = {
       ...result.data,
       id: crypto.randomUUID(),
       purchased: false,
       createdAt: new Date().toISOString(),
-    }, ...currentItems])
+    }
+
+    try {
+      if (selectedImages.length) {
+        const uploadedImages = await uploadEntityImages('compra', item.id, selectedImages)
+        queryClient.setQueryData(['imagenes', 'compra', item.id], uploadedImages)
+      }
+
+      setItems((currentItems) => [item, ...currentItems])
+    } catch (error) {
+      setImageUploadError(error instanceof Error ? error.message : 'No se pudieron subir las imágenes.')
+      return
+    }
+
     closeForm()
   }
 
@@ -1180,7 +1296,7 @@ function ShoppingListPage() {
                 <h2 className="text-primary text-lg font-semibold" id="shopping-dialog-title">Agregar producto</h2>
                 <p className="text-muted mt-1 text-xs">Registra lo necesario para planificar la compra.</p>
               </div>
-              <button className="icon-button -mr-2 -mt-2" type="button" aria-label="Cerrar" onClick={closeForm}>
+              <button className="icon-button -mr-2 -mt-2" type="button" aria-label="Cerrar" disabled={isSubmitting} onClick={closeForm}>
                 <X size={20} strokeWidth={iconStroke} />
               </button>
             </div>
@@ -1229,10 +1345,22 @@ function ShoppingListPage() {
                 <textarea className="shopping-input shopping-notes resize-y py-3" id="shopping-notes" placeholder="Modelo, color, referencia u otra información" {...register('notes')} />
                 {errors.notes ? <p className="field-error">{errors.notes.message}</p> : null}
               </div>
+              <div className="sm:col-span-2">
+                <PurchaseImagePicker
+                  disabled={isSubmitting}
+                  errorMessage={imageUploadError}
+                  files={selectedImages}
+                  onChange={(files, selectionError) => {
+                    setSelectedImages(files)
+                    setImageUploadError(selectionError ?? null)
+                  }}
+                />
+              </div>
               <div className="flex justify-end gap-3 sm:col-span-2">
-                <button className="secondary-button inline-flex" type="button" onClick={closeForm}>Cancelar</button>
-                <button className="primary-button inline-flex gap-2" type="submit">
-                  <Check size={16} strokeWidth={iconStroke} /> Guardar producto
+                <button className="secondary-button inline-flex" type="button" disabled={isSubmitting} onClick={closeForm}>Cancelar</button>
+                <button className="primary-button inline-flex gap-2" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? <UploadCloud size={16} strokeWidth={iconStroke} /> : <Check size={16} strokeWidth={iconStroke} />}
+                  {isSubmitting ? 'Guardando...' : 'Guardar producto'}
                 </button>
               </div>
             </form>
